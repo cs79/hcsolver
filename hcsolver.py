@@ -5,9 +5,10 @@
 import sys
 import getopt
 import re
+import pandas as pd
 from collections import OrderedDict
 from enum import Enum
-import pandas as pd
+from copy import deepcopy
 
 #=========================#
 #   S T R U C T U R E S   #
@@ -233,24 +234,161 @@ def get_sorted_dists(distmatrix):
     sorteddists.sort()
     return sorteddists
 
+def locate_dist(dist, distmatrix):
+    """
+    Locates the indices for `dist` inside `distmatrix`.
+    Returns the indices as a list.
+    """
+    inds = []
+    keys = list(distmatrix.columns)
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            if distmatrix[keys[i]][keys[j]] == dist:
+                inds.append(keys[i])
+                inds.append(keys[j])
+                break
+    return inds
+
+def get_max_dist(c1, c2, hc):
+    """
+    Finds maximum distance between clusters `c1` and `c2` for purposes
+    of complete linkage distance calculation; these values are assumed
+    to be keys in `hc.clusters`.
+    Distance information stored in `hc.distmatrix` is used to calculate
+    the maximum distance.
+    Returns the maximum distance found.
+    """
+    clist1 = hc.clusters[c1]
+    clist2 = hc.clusters[c2]
+    max_dist = float("-inf")
+    for i in clist1:
+        for j in clist2:
+            if hc.distmatrix[i][j] > max_dist:
+                max_dist = hc.distmatrix[i][j]
+    return max_dist
+
 def wrap1(nodestring):
     return "{" + nodestring + "}"
 
 def wrap2(ns1, ns2):
     return "{" + ns1 + "," + ns2 + "}"
 
+def rebuild_clusters(clusters, cmemberof, c1, c2):
+    """
+    Rebuilds cluster list `clusters` and membership lookup `cmemberof`,
+    merging `c1` and `c2`, which are assumed to be keys in `clusters`
+    dictionary.
+    Returns the new dictionaries as a packed tuple.
+    """
+    cnew = OrderedDict()
+    cmonew = deepcopy(cmemberof)
+    added = False
+    for key in clusters:
+        if key == c1 or key == c2:
+            if not added:
+                # figure out key order
+                newkey = None
+                newlist = None
+                if key == c1:
+                    newkey = wrap2(c1, c2)
+                    newlist = clusters[c1] + clusters[c2]
+                else:
+                    newkey = wrap2(c2, c1)
+                    newlist = clusters[c2] + clusters[c1]
+                assert newkey is not None, "newkey was not set!"
+                assert newlist is not None, "newlist was not set!"
+                # add new entry to cnew, update membership records
+                cnew[newkey] = newlist
+                for val in newlist:
+                    cmonew[val] = newkey
+                added = True
+        else:
+            # keep existing entries
+            cnew[key] = clusters[key]
+    return cnew, cmonew
+
+def print_clusters(clusters, i=None, j=None, d=None):
+    printstring = str(len(clusters)) + ":\t"
+    for cluster in clusters:
+        printstring += "{} ".format(cluster)
+    if i is not None and j is not None and d is not None:
+        printstring += "\t- used distance {} between {} and {}".format(d, i, j)
+    printstring += "\n"
+    print(printstring)
+
 #=========================================#
 #   C O R E   F U N C T I O N A L I T Y   #
 #=========================================#
 
-def run_hc(hc, linkage="single", verbose=False):
+def run_hc(hc, depth=0, linkage=None, verbose=False):
     """
     Runs hierarchical clustering on `hc.clusters` initial clusters.
     The `hc` object is assumed to be of type `HC`, and to have been
     populated with distance information to be used for clustering.
     """
-    
+    assert linkage is not None, "You must specify a linkage type when running hierarchical clustering"
+    # initial clusters will look the same regardless of linkage type
+    if verbose:
+        print("\n")
+        print_clusters(hc.clusters.keys())
+    sdists = deepcopy(hc.sorteddists)
+    nclusters = len(hc.clusters)
+    while nclusters > max(1, depth):
+        # traverse sorted distances, testing the minimum to see if we can use it
+        min_dist = sdists[0]
+        sdists = sdists[1:]
+        inds = locate_dist(min_dist, hc.distmatrix)
+        c1 = hc.cmemberof[inds[0]]
+        c2 = hc.cmemberof[inds[1]]
+        if c1 != c2:
+            if linkage == Linkage.COMPLETE:
+                # max dist between clusters must be equal to min_dist
+                max_dist = get_max_dist(c1, c2, hc)
+                if min_dist != max_dist:
+                    continue
+            # update cluster information
+            hc.clusters, hc.cmemberof = rebuild_clusters(hc.clusters, hc.cmemberof, c1, c2)
+            if verbose:
+                print_clusters(hc.clusters.keys(), inds[0], inds[1], min_dist)
+            nclusters -= 1
+    return
 
+
+
+
+    # # for single linkage, just traverse hc.sorteddists
+    # if linkage == Linkage.SINGLE:
+    #     while nclusters > max(1, depth):
+    #         min_dist = sdists[0]
+    #         sdists = sdists[1:]
+    #         inds = locate_dist(min_dist, hc.distmatrix)
+    #         # need to merge the two clusters containing inds
+    #         c1 = hc.cmemberof[inds[0]]
+    #         c2 = hc.cmemberof[inds[1]]
+    #         # need to check that they are not already part of the same cluster, though!
+    #         if c1 != c2:
+    #             hc.clusters, hc.cmemberof = rebuild_clusters(hc.clusters, hc.cmemberof, c1, c2)
+    #             if verbose:
+    #                 print_clusters(hc.clusters.keys())
+    #             nclusters -= 1
+    # # for complete linkage, need fancier calculations
+    # if linkage == Linkage.COMPLETE:
+    #     while nclusters > max(1, depth):
+    #         min_dist = sdists[0]
+    #         sdists = sdists[1:]
+    #         inds = locate_dist(min_dist, hc.distmatrix)
+    #         # need to find the MAX distance between indicated clusters
+    #         c1 = hc.cmemberof[inds[0]]
+    #         c2 = hc.cmemberof[inds[1]]
+    #         if c1 != c2:
+    #             max_dist = get_max_dist(c1, c2, hc)
+    #             # if it is also the min distance, then use it, otherwise continue
+    #             if min_dist == max_dist:
+    #                 hc.clusters, hc.cmemberof = rebuild_clusters(hc.clusters, hc.cmemberof, c1, c2)
+    #                 if verbose:
+    #                     print_clusters(hc.clusters.keys())
+    #                 nclusters -= 1
+    # return
 
 
 #=================================================#
@@ -267,10 +405,8 @@ def main():
     hc.clusters, hc.cmemberof = get_initial_clusters(list(dists.keys()))
     hc.distmatrix = calc_distance_matrix(dists, args["distance"])
     hc.sorteddists = get_sorted_dists(hc.distmatrix)
-
     # run clustering, printing out results
-    run_hc(hc, args["linkage"], args["verbose"])
-
+    run_hc(hc, args["depth"], args["linkage"], args["verbose"])
     # if no crashes so far, just exit normally
     sys.exit(0)
 
