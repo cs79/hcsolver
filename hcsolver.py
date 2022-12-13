@@ -46,8 +46,6 @@ class DistMetric(Enum):
     EUCLIDEANSQUARED = 1
     MANHATTAN = 2
 
-
-
 #=====================================#
 #   H E L P E R   F U N C T I O N S   #
 #=====================================#
@@ -70,7 +68,7 @@ def parse_args():
         sys.exit(1)
     # set default values; check runtime arguments to see if we need overrides
     args = {}
-    args["verbose"] = False
+    args["verbose"] = True                          # without verbose output, need to use interactively
     args["depth"] = 0                               # < 1 indicates full clustering
     args["linkage"] = Linkage.SINGLE                # default to simpler case
     args["distance"] = DistMetric.EUCLIDEANSQUARED  # "reasonable" default
@@ -229,7 +227,6 @@ def get_sorted_dists(distmatrix):
     keys = list(distmatrix.columns)
     for i in range(len(keys)):
         for j in range(i + 1, len(keys)):
-            # print(keys[i], keys[j])
             sorteddists.append(distmatrix[keys[i]][keys[j]])
     sorteddists.sort()
     return sorteddists
@@ -352,44 +349,6 @@ def run_hc(hc, depth=0, linkage=None, verbose=False):
                 print_clusters(hc.clusters.keys(), inds[0], inds[1], min_dist)
             nclusters -= 1
     return
-
-
-
-
-    # # for single linkage, just traverse hc.sorteddists
-    # if linkage == Linkage.SINGLE:
-    #     while nclusters > max(1, depth):
-    #         min_dist = sdists[0]
-    #         sdists = sdists[1:]
-    #         inds = locate_dist(min_dist, hc.distmatrix)
-    #         # need to merge the two clusters containing inds
-    #         c1 = hc.cmemberof[inds[0]]
-    #         c2 = hc.cmemberof[inds[1]]
-    #         # need to check that they are not already part of the same cluster, though!
-    #         if c1 != c2:
-    #             hc.clusters, hc.cmemberof = rebuild_clusters(hc.clusters, hc.cmemberof, c1, c2)
-    #             if verbose:
-    #                 print_clusters(hc.clusters.keys())
-    #             nclusters -= 1
-    # # for complete linkage, need fancier calculations
-    # if linkage == Linkage.COMPLETE:
-    #     while nclusters > max(1, depth):
-    #         min_dist = sdists[0]
-    #         sdists = sdists[1:]
-    #         inds = locate_dist(min_dist, hc.distmatrix)
-    #         # need to find the MAX distance between indicated clusters
-    #         c1 = hc.cmemberof[inds[0]]
-    #         c2 = hc.cmemberof[inds[1]]
-    #         if c1 != c2:
-    #             max_dist = get_max_dist(c1, c2, hc)
-    #             # if it is also the min distance, then use it, otherwise continue
-    #             if min_dist == max_dist:
-    #                 hc.clusters, hc.cmemberof = rebuild_clusters(hc.clusters, hc.cmemberof, c1, c2)
-    #                 if verbose:
-    #                     print_clusters(hc.clusters.keys())
-    #                 nclusters -= 1
-    # return
-
 
 #=================================================#
 #   M A I N   P R O G R A M   E X E C U T I O N   #
